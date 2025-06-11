@@ -30,24 +30,27 @@ function setup() {
   reverb.process(osc, 3, 2);
 }
 
+// ▼▼▼【draw関数を修正】▼▼▼
+// 座標の補正と描画をすべて反転ブロック内で行います
 function draw() {
   background(0);
   tint(255);
   
-  // カメラ映像の反転表示
+  // 映像の反転表示と、座標系の反転を開始
   push();
   translate(width, 0);
   scale(-1, 1);
+  
+  // 反転した空間に映像を描画（画面サイズに引き伸ばされる）
   image(video, 0, 0, width, height);
-  pop();
 
+  const videoWidth = video.width;
+  const videoHeight = video.height;
+
+  // 同じ反転空間内で、線の描画も行う
   noFill();
   strokeWeight(4);
   colorMode(HSB, 255);
-
-  // p5.jsはvideo.widthとvideo.heightにカメラの元の解像度を保持しています
-  const videoWidth = video.width;
-  const videoHeight = video.height;
 
   for (let i = 0; i < predictions.length; i++) {
     let hand = predictions[i];
@@ -57,15 +60,13 @@ function draw() {
     const indexTip = keypoints.find(k => k.name === "index_finger_tip");
 
     if (thumbTip && indexTip) {
-      // ▼▼▼【ここが今回の最重要修正点です】▼▼▼
-      // AIが検出した指の座標（ビデオ基準）を、画面サイズ基準の座標に変換します
+      // 座標をビデオ基準から画面基準に変換
       const thumbX = map(thumbTip.x, 0, videoWidth, 0, width);
       const thumbY = map(thumbTip.y, 0, videoHeight, 0, height);
       const indexX = map(indexTip.x, 0, videoWidth, 0, width);
       const indexY = map(indexTip.y, 0, videoHeight, 0, height);
-      // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-
-      // これ以降は、変換後の正しい座標を使って線画や計算を行います
+      
+      // 変換後の座標を、反転した空間内に描画
       let d = dist(thumbX, thumbY, indexX, indexY);
       let hue = map(d, 0, width, 0, 255);
       stroke(hue, 255, 255);
@@ -81,13 +82,18 @@ function draw() {
       }
     }
   }
+
+  // 反転処理を終了
+  pop();
 }
 
-// detectHands関数は、前回提案した flipHorizontal: true のままにします
+// ▼▼▼【detectHands関数を修正】▼▼▼
+// AIには座標を反転させず、元のデータをそのままもらいます
 function detectHands(detector) {
   setInterval(async () => {
     if (video.elt.readyState === 4) {
-      const hands = await detector.estimateHands(video.elt, { flipHorizontal: true });
+      // flipHorizontal を `false` に戻します
+      const hands = await detector.estimateHands(video.elt, { flipHorizontal: false });
       predictions = hands;
     }
   }, 100);
