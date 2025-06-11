@@ -1,11 +1,11 @@
-// パンク・ノイズ・マシン（完全版）
+// 新改造案：ネビュラ・ハンド (Nebula Hand)
 let video;
 let handpose;
 let predictions = [];
+let particles = [];
 
-let noise;        // ノイズ音源
-let bandPass;     // 特定の周波数帯を強調するフィルター
-let distortion;   // 音を歪ませるディストーション
+let drone; // 背景音（ドローン）
+let baseHue = 180; // 基本の色相（青）
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -13,90 +13,99 @@ function setup() {
   video.size(width, height);
   video.hide();
 
-  noSmooth(); // ★描画をギザギザにするパンクな設定
+  // ★描画モードをADD（加算）に。色が混ざるところが光るようになります。
+  blendMode(ADD);
 
   handpose = window.handPoseDetection;
   const model = handpose.SupportedModels.MediaPipeHands;
   handpose.createDetector(model, {
     runtime: "mediapipe",
-    modelType: "lite",
-    maxHands: 1, // ★片手しか使わないので1に設定
+    modelType: "full", // 全ての関節ポイントを使うため'full'に変更
+    maxHands: 1,
     solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/hands"
   }).then(detector => {
     detectHands(detector);
   });
   
-  // --- オーディオのセットアップ ---
-  noise = new p5.Noise('white');
-  bandPass = new p5.BandPass();
-  distortion = new p5.Distortion();
-
-  // 音の流れ: ノイズ → フィルター → ディストーション → スピーカー
-  noise.disconnect();
-  noise.connect(bandPass);
-  bandPass.disconnect();
-  bandPass.connect(distortion);
-
-  noise.start();
-  noise.amp(0); // 最初は音量0
+  // --- サウンドのセットアップ ---
+  drone = new p5.Oscillator('sine');
+  drone.freq(100); // 低い周波数
+  drone.amp(0); // 最初は音量0
+  drone.start();
 }
 
 function draw() {
-  let distortionAmount = 0; // このフレームの歪み量を保持する変数
+  background(0); // 背景は黒
 
+  // 手が検出されていれば、各関節からパーティクルを生成
   if (predictions.length > 0) {
-    const hand = predictions[0];
-    const wrist = hand.keypoints[0];
-    const thumbTip = hand.keypoints[4];
-    const indexTip = hand.keypoints[8];
+    const keypoints = predictions[0].keypoints;
+    for (let point of keypoints) {
+      // 3フレームに1回くらいの頻度でパーティクルを追加
+      if (frameCount % 3 === 0) {
+        let p = new Particle(point.x, point.y);
+        particles.push(p);
+      }
+    }
+    
+    // 手の位置と形で音をコントロール
+    const wrist = keypoints[0];
+    const thumbTip = keypoints[4];
+    const indexTip = keypoints[8];
 
-    // --- 操作性のマッピング ---
-    // 左右の位置で音量 (0 ~ 0.3)
-    const vol = map(wrist.x, 0, video.elt.videoWidth, 0.3, 0, true);
-    noise.amp(vol, 0.05);
+    // 手の高さで音の高さを少し変える
+    const droneFreq = map(wrist.y, 0, video.elt.videoHeight, 150, 80);
+    drone.freq(droneFreq, 0.2);
 
-    // 上下の位置でフィルター周波数 (100Hz ~ 1500Hz)
-    const filterFreq = map(wrist.y, 0, video.elt.videoHeight, 1500, 100);
-    bandPass.freq(filterFreq);
-
-    // つまむ距離でディストーション量 (0.0 ~ 0.9)
+    // つまむ距離で色相を変える
     const d = dist(thumbTip.x, thumbTip.y, indexTip.x, indexTip.y);
-    distortionAmount = map(d, 20, video.elt.videoWidth / 3, 0.9, 0.0, true);
-    distortion.set(distortionAmount, '4x'); // '4x'は歪みの種類
-  } else {
-    noise.amp(0, 0.2); // 手がなければ音を消す
+    if (d < 50) {
+      baseHue = (baseHue + 0.5) % 360; // 色相がゆっくり回転する
+    }
   }
 
-  // --- ビジュアルの描画 ---
-  // 歪みが最大に近いなら背景を白く点滅させる
-  if (distortionAmount > 0.85) {
-    background(255);
-  } else {
-    background(0);
+  // パーティクルの更新と描画
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].update();
+    particles[i].show();
+    if (particles[i].isFinished()) {
+      particles.splice(i, 1);
+    }
   }
-  
-  // 手が検出されている時だけ線を描画
-  if (predictions.length > 0) {
-    const hand = predictions[0];
-    const thumbTip = hand.keypoints[4];
-    const indexTip = hand.keypoints[8];
+}
+
+// パーティクルクラス
+class Particle {
+  constructor(x, y) {
+    this.videoWidth = video.elt.videoWidth;
+    this.videoHeight = video.elt.videoHeight;
     
-    const videoWidth = video.elt.videoWidth;
-    const videoHeight = video.elt.videoHeight;
+    // 座標をビデオ基準から画面基準に変換
+    this.x = map(x, 0, this.videoWidth, 0, width);
+    this.y = map(y, 0, this.videoHeight, 0, height);
     
-    const thumbX = map(thumbTip.x, 0, videoWidth, 0, width);
-    const thumbY = map(thumbTip.y, 0, videoHeight, 0, height);
-    const indexX = map(indexTip.x, 0, videoWidth, 0, width);
-    const indexY = map(indexTip.y, 0, videoHeight, 0, height);
-    
-    // グリッチ・ラインの描画
-    strokeWeight(10);
-    stroke(255, 0, 150); // ショッキングピンク
-    
-    // 毎回少しランダムにずらして線が震えるように見せる
-    const offsetX = random(-5, 5);
-    const offsetY = random(-5, 5);
-    line(thumbX + offsetX, thumbY + offsetY, indexX + offsetX, indexY + offsetY);
+    this.vx = random(-0.5, 0.5);
+    this.vy = random(-0.5, 0.5);
+    this.alpha = 150; // 透明度
+  }
+
+  isFinished() {
+    return this.alpha < 0;
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.alpha -= 2;
+  }
+
+  show() {
+    noStroke();
+    colorMode(HSB, 360, 255, 255, 255);
+    // baseHueを基準に、少しだけ色を揺らがせる
+    const hue = baseHue + random(-20, 20);
+    fill(hue % 360, 200, 255, this.alpha);
+    ellipse(this.x, this.y, 12);
   }
 }
 
@@ -104,15 +113,13 @@ function draw() {
 function detectHands(detector) {
   setInterval(async () => {
     if (video.elt.readyState === 4 && video.elt.videoWidth > 0) {
-      const hands = await detector.estimateHands(video.elt, { flipHorizontal: false });
+      const hands = await detector.estimateHands(video.elt, { flipHorizontal: true });
       predictions = hands;
     }
-  }, 100);
+  }, 30); // 検出の頻度を少し上げる
 }
 
 function mousePressed() {
   if (getAudioContext().state !== 'running') {
     getAudioContext().resume();
-  }
-}
-// --- ここがファイルの最後です ---
+    drone.amp(0
