@@ -36,6 +36,7 @@ function draw() {
 
   noFill();
   strokeWeight(4);
+  colorMode(HSB, 255);
 
   for (let i = 0; i < predictions.length; i++) {
     let hand = predictions[i];
@@ -69,5 +70,7 @@ function detectHands(detector) {
 }
 
 function mousePressed() {
-  getAudioContext().resume();
+  if (typeof getAudioContext === 'function') {
+    getAudioContext().resume();
+  }
 }
