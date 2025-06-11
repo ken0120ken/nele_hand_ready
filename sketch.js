@@ -1,4 +1,4 @@
-// 新改造案：パンク・ノイズ・マシン
+// パンク・ノイズ・マシン（完全版）
 let video;
 let handpose;
 let predictions = [];
@@ -18,7 +18,7 @@ function setup() {
   handpose = window.handPoseDetection;
   const model = handpose.SupportedModels.MediaPipeHands;
   handpose.createDetector(model, {
-    runtime: "medipe",
+    runtime: "mediapipe",
     modelType: "lite",
     maxHands: 1, // ★片手しか使わないので1に設定
     solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/hands"
@@ -111,3 +111,8 @@ function detectHands(detector) {
 }
 
 function mousePressed() {
+  if (getAudioContext().state !== 'running') {
+    getAudioContext().resume();
+  }
+}
+// --- ここがファイルの最後です ---
