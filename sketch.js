@@ -30,17 +30,20 @@ function setup() {
   reverb.process(osc, 3, 2);
 }
 
+// ▼▼▼【draw関数を元に戻しました】▼▼▼
+// 線の描画処理を push/pop の外に出します。
 function draw() {
   background(0);
   tint(255);
-
-  // カメラ映像を左右反転させる処理の開始
+  
+  // カメラ映像の反転表示
   push();
   translate(width, 0);
   scale(-1, 1);
   image(video, 0, 0, width, height);
+  pop();
 
-  // ▼▼▼【ここから】線の描画や手の処理を、反転ブロックの中に移動しました ▼▼▼
+  // 描画処理は push/pop の外（通常の座標系）で行う
   noFill();
   strokeWeight(4);
   colorMode(HSB, 255);
@@ -56,7 +59,6 @@ function draw() {
       let d = dist(thumbTip.x, thumbTip.y, indexTip.x, indexTip.y);
       let hue = map(d, 0, width, 0, 255);
       stroke(hue, 255, 255);
-      // 2つの指先を線で結ぶ
       line(thumbTip.x, thumbTip.y, indexTip.x, indexTip.y);
 
       // 音声の制御
@@ -69,17 +71,15 @@ function draw() {
       }
     }
   }
-  // ▲▲▲【ここまで】が移動した部分です ▲▲▲
-
-  // カメラ映像を左右反転させる処理の終了
-  pop();
 }
 
+// ▼▼▼【detectHands関数を変更しました】▼▼▼
+// AIモデルに座標を左右反転させるように指示します。
 function detectHands(detector) {
   setInterval(async () => {
     if (video.elt.readyState === 4) {
-      // 検出は元の反転していない映像に対して行う
-      const hands = await detector.estimateHands(video.elt, { flipHorizontal: false });
+      // flipHorizontal を `true` に変更
+      const hands = await detector.estimateHands(video.elt, { flipHorizontal: true });
       predictions = hands;
     }
   }, 100);
