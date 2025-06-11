@@ -1,11 +1,11 @@
-// 修正案：サイバー・ディレイ
+// 修正版：サイバー・ディレイ（変数名の衝突を修正）
 let video;
 let handpose;
 let predictions = [];
 
-let osc;      // オシレーター（音源）
-let filter;   // フィルター（音色）
-let delay;    // ディレイ（やまびこ効果）
+let osc;
+let lowPassFilter; // ★変数名を filter から lowPassFilter に変更
+let delay;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -19,17 +19,16 @@ function setup() {
     detectHands(detector);
   });
   
-  // ノコギリ波オシレーター。デジタルで鋭い音。
   osc = new p5.Oscillator('sawtooth');
   
-  // エフェクトのセットアップ
-  filter = new p5.LowPass();
+  // ★変数名を変更
+  lowPassFilter = new p5.LowPass();
   delay = new p5.Delay();
 
-  // 音の流れを接続: オシレーター → フィルター → ディレイ → スピーカー
+  // 音の流れを接続
   osc.disconnect();
-  osc.connect(filter);
-  delay.process(filter, 0.5, 0.5, 2300); // .process(音源, ディレイタイム, フィードバック, カットオフ)
+  osc.connect(lowPassFilter); // ★変数名を変更
+  delay.process(lowPassFilter, 0.5, 0.5, 2300); // ★変数名を変更
 
   osc.start();
   osc.amp(0);
@@ -40,7 +39,7 @@ function draw() {
   push();
   translate(width, 0);
   scale(-1, 1);
-  filter(INVERT); // 色を反転させて、よりサイバーな見た目に
+  filter(INVERT); // この命令が、変数名と衝突していました
   image(video, 0, 0, width, height);
   pop();
 
@@ -55,7 +54,6 @@ function draw() {
     }
   }
 
-  // 右手: 音量と基本周波数
   if (rightHand) {
     const thumbTip = rightHand.keypoints[4];
     const indexTip = rightHand.keypoints[8];
@@ -68,35 +66,32 @@ function draw() {
     const freq = map(wrist.y, 0, videoHeight, 800, 100);
     osc.freq(freq, 0.1);
     
-    // 右手X（左右）でディレイのフィードバック（やまびこの回数）を操作
     const feedback = map(wrist.x, 0, videoWidth, 0, 0.8);
     delay.feedback(feedback);
 
     const wristX = map(wrist.x, 0, videoWidth, 0, width);
     const wristY = map(wrist.y, 0, videoHeight, 0, height);
     noFill();
-    stroke(255, 100, 0, 200); // オレンジ色
+    stroke(255, 100, 0, 200);
     strokeWeight(vol * 20);
     ellipse(wristX, wristY, 50);
   } else {
     osc.amp(0, 0.5);
   }
 
-  // 左手: フィルターとディレイタイム
   if (leftHand) {
     const wrist = leftHand.keypoints[0];
 
     const filterFreq = map(wrist.y, 0, videoHeight, 2000, 100);
-    filter.freq(filterFreq);
+    lowPassFilter.freq(filterFreq); // ★変数名を変更
 
-    // 左手X（左右）でディレイタイム（やまびこのリズム）を操作
     const delayTime = map(wrist.x, 0, videoWidth, 0, 1.0);
     delay.delayTime(delayTime);
     
     const wristX = map(wrist.x, 0, videoWidth, 0, width);
     const wristY = map(wrist.y, 0, videoHeight, 0, height);
     noFill();
-    stroke(0, 150, 255, 200); // 水色
+    stroke(0, 150, 255, 200);
     strokeWeight(4);
     ellipse(wristX, wristY, 50);
   }
