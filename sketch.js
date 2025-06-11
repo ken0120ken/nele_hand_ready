@@ -1,11 +1,11 @@
-// 最終修正版：サイバー・ディレイ（solutionPathを修正）
+// 新改造案：パンク・ノイズ・マシン
 let video;
 let handpose;
 let predictions = [];
 
-let osc;
-let lowPassFilter;
-let delay;
+let noise;        // ノイズ音源
+let bandPass;     // 特定の周波数帯を強調するフィルター
+let distortion;   // 音を歪ませるディストーション
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -13,94 +13,93 @@ function setup() {
   video.size(width, height);
   video.hide();
 
+  noSmooth(); // ★描画をギザギザにするパンクな設定
+
   handpose = window.handPoseDetection;
   const model = handpose.SupportedModels.MediaPipeHands;
-  
-  // ここに solutionPath を追加しました
   handpose.createDetector(model, {
-    runtime: "mediapipe",
+    runtime: "medipe",
     modelType: "lite",
-    maxHands: 2,
+    maxHands: 1, // ★片手しか使わないので1に設定
     solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/hands"
   }).then(detector => {
     detectHands(detector);
   });
   
-  osc = new p5.Oscillator('sawtooth');
-  
-  lowPassFilter = new p5.LowPass();
-  delay = new p5.Delay();
+  // --- オーディオのセットアップ ---
+  noise = new p5.Noise('white');
+  bandPass = new p5.BandPass();
+  distortion = new p5.Distortion();
 
-  osc.disconnect();
-  osc.connect(lowPassFilter);
-  delay.process(lowPassFilter, 0.5, 0.5, 2300);
+  // 音の流れ: ノイズ → フィルター → ディストーション → スピーカー
+  noise.disconnect();
+  noise.connect(bandPass);
+  bandPass.disconnect();
+  bandPass.connect(distortion);
 
-  osc.start();
-  osc.amp(0);
+  noise.start();
+  noise.amp(0); // 最初は音量0
 }
 
 function draw() {
-  background(0);
-  push();
-  translate(width, 0);
-  scale(-1, 1);
-  filter(INVERT);
-  image(video, 0, 0, width, height);
-  pop();
+  let distortionAmount = 0; // このフレームの歪み量を保持する変数
 
-  const videoWidth = video.elt.videoWidth;
-  const videoHeight = video.elt.videoHeight;
-
-  let rightHand, leftHand;
-  
   if (predictions.length > 0) {
-    for (const hand of predictions) {
-      hand.handedness === 'Right' ? rightHand = hand : leftHand = hand;
-    }
-  }
+    const hand = predictions[0];
+    const wrist = hand.keypoints[0];
+    const thumbTip = hand.keypoints[4];
+    const indexTip = hand.keypoints[8];
 
-  if (rightHand) {
-    const thumbTip = rightHand.keypoints[4];
-    const indexTip = rightHand.keypoints[8];
-    const wrist = rightHand.keypoints[0];
+    // --- 操作性のマッピング ---
+    // 左右の位置で音量 (0 ~ 0.3)
+    const vol = map(wrist.x, 0, video.elt.videoWidth, 0.3, 0, true);
+    noise.amp(vol, 0.05);
 
+    // 上下の位置でフィルター周波数 (100Hz ~ 1500Hz)
+    const filterFreq = map(wrist.y, 0, video.elt.videoHeight, 1500, 100);
+    bandPass.freq(filterFreq);
+
+    // つまむ距離でディストーション量 (0.0 ~ 0.9)
     const d = dist(thumbTip.x, thumbTip.y, indexTip.x, indexTip.y);
-    const vol = map(d, 20, videoWidth / 4, 0.3, 0, true);
-    osc.amp(vol, 0.1);
-
-    const freq = map(wrist.y, 0, videoHeight, 800, 100);
-    osc.freq(freq, 0.1);
-    
-    const feedback = map(wrist.x, 0, videoWidth, 0, 0.8);
-    delay.feedback(feedback);
-
-    const wristX = map(wrist.x, 0, videoWidth, 0, width);
-    const wristY = map(wrist.y, 0, videoHeight, 0, height);
-    noFill();
-    stroke(255, 100, 0, 200);
-    strokeWeight(vol * 20);
-    ellipse(wristX, wristY, 50);
+    distortionAmount = map(d, 20, video.elt.videoWidth / 3, 0.9, 0.0, true);
+    distortion.set(distortionAmount, '4x'); // '4x'は歪みの種類
   } else {
-    osc.amp(0, 0.5);
+    noise.amp(0, 0.2); // 手がなければ音を消す
   }
 
-  if (leftHand) {
-    const wrist = leftHand.keypoints[0];
-
-    const filterFreq = map(wrist.y, 0, videoHeight, 2000, 100);
-    lowPassFilter.freq(filterFreq);
-
-    const delayTime = map(wrist.x, 0, videoWidth, 0, 1.0);
-    delay.delayTime(delayTime);
+  // --- ビジュアルの描画 ---
+  // 歪みが最大に近いなら背景を白く点滅させる
+  if (distortionAmount > 0.85) {
+    background(255);
+  } else {
+    background(0);
+  }
+  
+  // 手が検出されている時だけ線を描画
+  if (predictions.length > 0) {
+    const hand = predictions[0];
+    const thumbTip = hand.keypoints[4];
+    const indexTip = hand.keypoints[8];
     
-    const wristX = map(wrist.x, 0, videoWidth, 0, width);
-    const wristY = map(wrist.y, 0, videoHeight, 0, height);
-    noFill();
-    stroke(0, 150, 255, 200);
-    strokeWeight(4);
-    ellipse(wristX, wristY, 50);
+    const videoWidth = video.elt.videoWidth;
+    const videoHeight = video.elt.videoHeight;
+    
+    const thumbX = map(thumbTip.x, 0, videoWidth, 0, width);
+    const thumbY = map(thumbTip.y, 0, videoHeight, 0, height);
+    const indexX = map(indexTip.x, 0, videoWidth, 0, width);
+    const indexY = map(indexTip.y, 0, videoHeight, 0, height);
+    
+    // グリッチ・ラインの描画
+    strokeWeight(10);
+    stroke(255, 0, 150); // ショッキングピンク
+    
+    // 毎回少しランダムにずらして線が震えるように見せる
+    const offsetX = random(-5, 5);
+    const offsetY = random(-5, 5);
+    line(thumbX + offsetX, thumbY + offsetY, indexX + offsetX, indexY + offsetY);
   }
 }
+
 
 function detectHands(detector) {
   setInterval(async () => {
@@ -112,7 +111,3 @@ function detectHands(detector) {
 }
 
 function mousePressed() {
-  if (getAudioContext().state !== 'running') {
-    getAudioContext().resume();
-  }
-}
