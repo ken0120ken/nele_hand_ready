@@ -1,11 +1,11 @@
-// 最終修正版：サイバー・ディレイ
+// 最終修正版：サイバー・ディレイ（solutionPathを修正）
 let video;
 let handpose;
 let predictions = [];
 
-let osc;          // オシレーター（音源）
-let lowPassFilter;  // フィルター（音色）
-let delay;        // ディレイ（やまびこ効果）
+let osc;
+let lowPassFilter;
+let delay;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -15,18 +15,22 @@ function setup() {
 
   handpose = window.handPoseDetection;
   const model = handpose.SupportedModels.MediaPipeHands;
-  handpose.createDetector(model, { runtime: "mediapipe", modelType: "lite", maxHands: 2 }).then(detector => {
+  
+  // ここに solutionPath を追加しました
+  handpose.createDetector(model, {
+    runtime: "mediapipe",
+    modelType: "lite",
+    maxHands: 2,
+    solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/hands"
+  }).then(detector => {
     detectHands(detector);
   });
   
-  // ノコギリ波オシレーター。デジタルで鋭い音。
   osc = new p5.Oscillator('sawtooth');
   
-  // エフェクトのセットアップ
   lowPassFilter = new p5.LowPass();
   delay = new p5.Delay();
 
-  // 音の流れを接続: オシレーター → フィルター → ディレイ → スピーカー
   osc.disconnect();
   osc.connect(lowPassFilter);
   delay.process(lowPassFilter, 0.5, 0.5, 2300);
@@ -40,7 +44,7 @@ function draw() {
   push();
   translate(width, 0);
   scale(-1, 1);
-  filter(INVERT); // 色を反転させて、よりサイバーな見た目に
+  filter(INVERT);
   image(video, 0, 0, width, height);
   pop();
 
@@ -55,7 +59,6 @@ function draw() {
     }
   }
 
-  // 右手: 音量、周波数、ディレイのフィードバック
   if (rightHand) {
     const thumbTip = rightHand.keypoints[4];
     const indexTip = rightHand.keypoints[8];
@@ -74,14 +77,13 @@ function draw() {
     const wristX = map(wrist.x, 0, videoWidth, 0, width);
     const wristY = map(wrist.y, 0, videoHeight, 0, height);
     noFill();
-    stroke(255, 100, 0, 200); // オレンジ色
+    stroke(255, 100, 0, 200);
     strokeWeight(vol * 20);
     ellipse(wristX, wristY, 50);
   } else {
     osc.amp(0, 0.5);
   }
 
-  // 左手: フィルター周波数、ディレイタイム
   if (leftHand) {
     const wrist = leftHand.keypoints[0];
 
@@ -94,21 +96,19 @@ function draw() {
     const wristX = map(wrist.x, 0, videoWidth, 0, width);
     const wristY = map(wrist.y, 0, videoHeight, 0, height);
     noFill();
-    stroke(0, 150, 255, 200); // 水色
+    stroke(0, 150, 255, 200);
     strokeWeight(4);
     ellipse(wristX, wristY, 50);
   }
 }
 
-// 安定版の detectHands 関数
 function detectHands(detector) {
   setInterval(async () => {
     if (video.elt.readyState === 4 && video.elt.videoWidth > 0) {
-      // 描画側で反転しているので、ここでは反転させない (false)
       const hands = await detector.estimateHands(video.elt, { flipHorizontal: false });
       predictions = hands;
     }
-  }, 100); // 100ミリ秒ごとに検出
+  }, 100);
 }
 
 function mousePressed() {
