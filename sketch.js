@@ -30,24 +30,39 @@ function setup() {
   reverb.process(osc, 3, 2);
 }
 
-// ▼▼▼【draw関数を修正】▼▼▼
-// 座標の補正と描画をすべて反転ブロック内で行います
 function draw() {
   background(0);
   tint(255);
-  
-  // 映像の反転表示と、座標系の反転を開始
+
   push();
   translate(width, 0);
   scale(-1, 1);
-  
-  // 反転した空間に映像を描画（画面サイズに引き伸ばされる）
   image(video, 0, 0, width, height);
+  pop();
 
   const videoWidth = video.width;
   const videoHeight = video.height;
 
-  // 同じ反転空間内で、線の描画も行う
+  // ▼▼▼【ここからがデバッグコードです】▼▼▼
+  // 1秒に1回、コンソールに内部の数値を出力します
+  if (frameCount > 1 && frameCount % 60 === 1) {
+    console.log("--- 内部情報 ---");
+    console.log("画面の幅/高さ:", width, height);
+    console.log("映像の幅/高さ:", videoWidth, videoHeight);
+    
+    if (predictions.length > 0) {
+      const firstHand = predictions[0];
+      const thumbTip = firstHand.keypoints.find(k => k.name === "thumb_tip");
+      if (thumbTip) {
+        console.log("親指のX座標（変換前）:", thumbTip.x);
+        const mappedX = map(thumbTip.x, 0, videoWidth, 0, width);
+        console.log("親指のX座標（変換後）:", mappedX);
+      }
+    }
+    console.log("--------------------");
+  }
+  // ▲▲▲【デバッグコードここまで】▲▲▲
+
   noFill();
   strokeWeight(4);
   colorMode(HSB, 255);
@@ -55,24 +70,20 @@ function draw() {
   for (let i = 0; i < predictions.length; i++) {
     let hand = predictions[i];
     const keypoints = hand.keypoints;
-
     const thumbTip = keypoints.find(k => k.name === "thumb_tip");
     const indexTip = keypoints.find(k => k.name === "index_finger_tip");
 
     if (thumbTip && indexTip) {
-      // 座標をビデオ基準から画面基準に変換
       const thumbX = map(thumbTip.x, 0, videoWidth, 0, width);
       const thumbY = map(thumbTip.y, 0, videoHeight, 0, height);
       const indexX = map(indexTip.x, 0, videoWidth, 0, width);
       const indexY = map(indexTip.y, 0, videoHeight, 0, height);
       
-      // 変換後の座標を、反転した空間内に描画
       let d = dist(thumbX, thumbY, indexX, indexY);
       let hue = map(d, 0, width, 0, 255);
       stroke(hue, 255, 255);
       line(thumbX, thumbY, indexX, indexY);
 
-      // 音声の制御
       if (i === 0) {
         let vol = map(d, 20, width / 2, 0, 0.5, true);
         osc.amp(vol, 0.1);
@@ -82,17 +93,11 @@ function draw() {
       }
     }
   }
-
-  // 反転処理を終了
-  pop();
 }
 
-// ▼▼▼【detectHands関数を修正】▼▼▼
-// AIには座標を反転させず、元のデータをそのままもらいます
 function detectHands(detector) {
   setInterval(async () => {
     if (video.elt.readyState === 4) {
-      // flipHorizontal を `false` に戻します
       const hands = await detector.estimateHands(video.elt, { flipHorizontal: false });
       predictions = hands;
     }
