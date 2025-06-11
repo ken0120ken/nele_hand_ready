@@ -30,8 +30,6 @@ function setup() {
   reverb.process(osc, 3, 2);
 }
 
-// ▼▼▼【draw関数を元に戻しました】▼▼▼
-// 線の描画処理を push/pop の外に出します。
 function draw() {
   background(0);
   tint(255);
@@ -43,10 +41,13 @@ function draw() {
   image(video, 0, 0, width, height);
   pop();
 
-  // 描画処理は push/pop の外（通常の座標系）で行う
   noFill();
   strokeWeight(4);
   colorMode(HSB, 255);
+
+  // p5.jsはvideo.widthとvideo.heightにカメラの元の解像度を保持しています
+  const videoWidth = video.width;
+  const videoHeight = video.height;
 
   for (let i = 0; i < predictions.length; i++) {
     let hand = predictions[i];
@@ -56,10 +57,19 @@ function draw() {
     const indexTip = keypoints.find(k => k.name === "index_finger_tip");
 
     if (thumbTip && indexTip) {
-      let d = dist(thumbTip.x, thumbTip.y, indexTip.x, indexTip.y);
+      // ▼▼▼【ここが今回の最重要修正点です】▼▼▼
+      // AIが検出した指の座標（ビデオ基準）を、画面サイズ基準の座標に変換します
+      const thumbX = map(thumbTip.x, 0, videoWidth, 0, width);
+      const thumbY = map(thumbTip.y, 0, videoHeight, 0, height);
+      const indexX = map(indexTip.x, 0, videoWidth, 0, width);
+      const indexY = map(indexTip.y, 0, videoHeight, 0, height);
+      // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+      // これ以降は、変換後の正しい座標を使って線画や計算を行います
+      let d = dist(thumbX, thumbY, indexX, indexY);
       let hue = map(d, 0, width, 0, 255);
       stroke(hue, 255, 255);
-      line(thumbTip.x, thumbTip.y, indexTip.x, indexTip.y);
+      line(thumbX, thumbY, indexX, indexY);
 
       // 音声の制御
       if (i === 0) {
@@ -73,12 +83,10 @@ function draw() {
   }
 }
 
-// ▼▼▼【detectHands関数を変更しました】▼▼▼
-// AIモデルに座標を左右反転させるように指示します。
+// detectHands関数は、前回提案した flipHorizontal: true のままにします
 function detectHands(detector) {
   setInterval(async () => {
     if (video.elt.readyState === 4) {
-      // flipHorizontal を `true` に変更
       const hands = await detector.estimateHands(video.elt, { flipHorizontal: true });
       predictions = hands;
     }
