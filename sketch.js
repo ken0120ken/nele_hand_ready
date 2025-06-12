@@ -4,7 +4,7 @@ let predictions = [];
 
 let osc;
 let lowPassFilter;
-let distortion; // ★★★ 歪みエフェクトを追加 ★★★
+let distortion;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -23,12 +23,10 @@ function setup() {
     detectFaces();
   });
 
-  // --- サウンドのセットアップ ---
   osc = new p5.Oscillator('sawtooth');
   lowPassFilter = new p5.LowPass();
   distortion = new p5.Distortion();
 
-  // 音の流れ: オシレーター → フィルター → ディストーション → スピーカー
   osc.disconnect();
   osc.connect(lowPassFilter);
   lowPassFilter.disconnect();
@@ -51,40 +49,33 @@ function draw() {
     const keypoints = predictions[0].keypoints;
     const noseTip = keypoints[1];
 
-    // --- ★★★ 新しい音のコントロール ★★★ ---
-    // 1. 口の開き具合を取得
+    // --- ★★★ 新しい音のコントロールロジック ★★★ ---
+
+    // 1. 口の開き具合で、音量と歪みをコントロール
     const upperLip = keypoints[13];
     const lowerLip = keypoints[14];
     const mouthOpening = dist(upperLip.x, upperLip.y, lowerLip.x, lowerLip.y);
-
-    // 2. 口の開き具合で全体の音量をコントロール
     const vol = map(mouthOpening, 5, 30, 0, 0.4, true);
     osc.amp(vol, 0.1);
-
-    // 3. 顔の上下の位置で基本の周波数をコントロール
-    const baseFreq = map(noseTip.y, 0, video.elt.videoHeight, 400, 100, true);
-
-    // 4. 口の開き具合で周波数をさらに高くする（叫び声の効果）
-    const shoutPitch = map(mouthOpening, 5, 30, 0, 400, true);
-    osc.freq(baseFreq + shoutPitch, 0.05);
-
-    // 5. 顔の左右の位置でフィルター（音のこもり具合）をコントロール
-    const filterFreq = map(noseTip.x, 0, video.elt.videoWidth, 200, 2500, true);
-    
-    // 6. 口の開き具合でフィルターをさらに開く（叫び声の効果）
-    const shoutFilter = map(mouthOpening, 5, 30, 0, 4000, true);
-    lowPassFilter.freq(filterFreq + shoutFilter);
-
-    // 7. 口の開き具合で歪みの量をコントロール
     const distortionAmount = map(mouthOpening, 10, 35, 0, 0.9, true);
-    distortion.set(distortionAmount, '2x');
+    distortion.set(distortionAmount, '4x');
+
+    // 2. 顔の上下の位置で、音の高さを直接コントロール
+    const freq = map(noseTip.y, video.elt.videoHeight, 0, 80, 1200, true);
+    osc.freq(freq, 0.05);
+
+    // 3. 顔の左右の位置で、フィルターの周波数とレゾナンス（癖の強さ）をコントロール
+    const filterFreq = map(noseTip.x, 0, video.elt.videoWidth, 200, 5000, true);
+    lowPassFilter.freq(filterFreq);
+    const filterRes = map(noseTip.x, 0, video.elt.videoWidth, 20, 1, true); // 左右の端でレゾナンスが高まる
+    lowPassFilter.res(filterRes);
+
 
     // --- ビジュアルの描画 ---
-    // 顔の輪郭を、音の状態に合わせて描画
     noFill();
     const hue = map(noseTip.x, 0, video.elt.videoWidth, 240, 0);
-    const saturation = map(distortionAmount, 0, 0.9, 0, 255); // 歪むほど色が鮮やかに
-    const brightness = map(vol, 0, 0.4, 100, 255); // 音量が大きいほど明るく
+    const saturation = map(distortionAmount, 0, 0.9, 0, 255);
+    const brightness = map(vol, 0, 0.4, 100, 255);
     colorMode(HSB);
     stroke(hue, saturation, brightness);
     strokeWeight(2);
