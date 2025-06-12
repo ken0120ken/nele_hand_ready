@@ -2,8 +2,9 @@ let video;
 let faceDetector;
 let predictions = [];
 
-let osc;          // 音を出すオシレーター
-let lowPassFilter;  // 音質を変化させるフィルター
+let osc;
+let lowPassFilter;
+let distortion; // ★★★ 歪みエフェクトを追加 ★★★
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -22,17 +23,19 @@ function setup() {
     detectFaces();
   });
 
-  // --- ★★★ サウンドのセットアップを変更 ★★★ ---
-  osc = new p5.Oscillator('sawtooth'); // 少しザラついた音に変更
-  lowPassFilter = new p5.LowPass();   // ローパスフィルターを追加
+  // --- サウンドのセットアップ ---
+  osc = new p5.Oscillator('sawtooth');
+  lowPassFilter = new p5.LowPass();
+  distortion = new p5.Distortion();
 
-  // 音の流れ: オシレーター → フィルター → スピーカー
+  // 音の流れ: オシレーター → フィルター → ディストーション → スピーカー
   osc.disconnect();
   osc.connect(lowPassFilter);
+  lowPassFilter.disconnect();
+  lowPassFilter.connect(distortion);
 
   osc.start();
-  osc.freq(220); // 音の高さは固定
-  osc.amp(0);    // 最初は音量0
+  osc.amp(0);
 }
 
 function draw() {
@@ -46,29 +49,45 @@ function draw() {
   
   if (predictions.length > 0) {
     const keypoints = predictions[0].keypoints;
-    const noseTip = keypoints[1]; // 鼻先のポイントを基準にする
+    const noseTip = keypoints[1];
 
-    // --- ★★★ 音のコントロールを変更 ★★★ ---
-    // 1. 顔の上下の位置で音量をコントロール
-    //    y座標は下に行くほど値が大きくなるので、mapの範囲を逆にします
-    const vol = map(noseTip.y, 0, video.elt.videoHeight, 0.5, 0, true);
+    // --- ★★★ 新しい音のコントロール ★★★ ---
+    // 1. 口の開き具合を取得
+    const upperLip = keypoints[13];
+    const lowerLip = keypoints[14];
+    const mouthOpening = dist(upperLip.x, upperLip.y, lowerLip.x, lowerLip.y);
+
+    // 2. 口の開き具合で全体の音量をコントロール
+    const vol = map(mouthOpening, 5, 30, 0, 0.4, true);
     osc.amp(vol, 0.1);
 
-    // 2. 顔の左右の位置で音質（フィルターの周波数）をコントロール
-    const filterFreq = map(noseTip.x, 0, video.elt.videoWidth, 100, 2200, true);
-    lowPassFilter.freq(filterFreq);
+    // 3. 顔の上下の位置で基本の周波数をコントロール
+    const baseFreq = map(noseTip.y, 0, video.elt.videoHeight, 400, 100, true);
+
+    // 4. 口の開き具合で周波数をさらに高くする（叫び声の効果）
+    const shoutPitch = map(mouthOpening, 5, 30, 0, 400, true);
+    osc.freq(baseFreq + shoutPitch, 0.05);
+
+    // 5. 顔の左右の位置でフィルター（音のこもり具合）をコントロール
+    const filterFreq = map(noseTip.x, 0, video.elt.videoWidth, 200, 2500, true);
+    
+    // 6. 口の開き具合でフィルターをさらに開く（叫び声の効果）
+    const shoutFilter = map(mouthOpening, 5, 30, 0, 4000, true);
+    lowPassFilter.freq(filterFreq + shoutFilter);
+
+    // 7. 口の開き具合で歪みの量をコントロール
+    const distortionAmount = map(mouthOpening, 10, 35, 0, 0.9, true);
+    distortion.set(distortionAmount, '2x');
 
     // --- ビジュアルの描画 ---
+    // 顔の輪郭を、音の状態に合わせて描画
     noFill();
-    
-    // 左右の位置（音質）で色を変化
-    const hue = map(noseTip.x, 0, video.elt.videoWidth, 240, 0); // 紫から赤へ
+    const hue = map(noseTip.x, 0, video.elt.videoWidth, 240, 0);
+    const saturation = map(distortionAmount, 0, 0.9, 0, 255); // 歪むほど色が鮮やかに
+    const brightness = map(vol, 0, 0.4, 100, 255); // 音量が大きいほど明るく
     colorMode(HSB);
-    stroke(hue, 255, 255);
-    
-    // 上下の位置（音量）で線の太さを変化
-    const sw = map(noseTip.y, 0, video.elt.videoHeight, 5, 0.5, true);
-    strokeWeight(sw);
+    stroke(hue, saturation, brightness);
+    strokeWeight(2);
     
     beginShape();
     for (let point of keypoints) {
@@ -76,7 +95,8 @@ function draw() {
       const y = map(point.y, 0, video.elt.videoHeight, 0, height);
       vertex(x, y);
     }
-    endShape();
+    endShape(CLOSE);
+
   } else {
     osc.amp(0, 0.2);
   }
